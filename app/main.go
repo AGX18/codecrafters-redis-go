@@ -40,14 +40,21 @@ func HandleConnection(conn net.Conn) {
 		args, err := parseRESP(reader)
 		logger.Printf("Parsed arguments: %v", args)
 		if err != nil {
-			conn.Write([]byte("-ERR " + err.Error() + "\r\n"))
+			writeError(conn, err.Error())
 			return
 		}
 		if len(args) == 0 {
-			conn.Write([]byte("-ERR No command provided\r\n"))
+			writeError(conn, "No Command Provided")
 			return
 		}
-		conn.Write([]byte("+PONG\r\n"))
+
+		if strings.ToUpper(args[0]) == "PING" {
+			writeSimpleString(conn, "PONG")
+		}
+
+		if strings.ToUpper(args[0]) == "ECHO" && len(args) > 1 {
+			writeBulkString(conn, strings.TrimSpace(strings.Join(args[1:], " ")))
+		}
 	}
 
 }
@@ -89,4 +96,16 @@ func parseRESP(reader *bufio.Reader) ([]string, error) {
 	}
 
 	return args, nil
+}
+
+func writeSimpleString(conn net.Conn, value string) {
+	conn.Write([]byte("+" + value + "\r\n"))
+}
+
+func writeError(conn net.Conn, message string) {
+	conn.Write([]byte("-ERR " + message + "\r\n"))
+}
+
+func writeBulkString(conn net.Conn, value string) {
+	conn.Write([]byte("$" + strconv.Itoa(len(value)) + "\r\n" + value + "\r\n"))
 }
