@@ -13,7 +13,7 @@ import (
 var logger = log.New(os.Stderr, "DEBUG: ", log.LstdFlags)
 
 func main() {
-
+	store := &Store{}
 	logger.Println("Starting the Program")
 	listener, err := net.Listen("tcp", "0.0.0.0:6379")
 	if err != nil {
@@ -29,11 +29,11 @@ func main() {
 		}
 		logger.Println("Client connected:", conn.RemoteAddr())
 		// reading and parsing RESP commands from the client and responding with a simple PONG message
-		go HandleConnection(conn)
+		go HandleConnection(conn, store)
 	}
 }
 
-func HandleConnection(conn net.Conn) {
+func HandleConnection(conn net.Conn, store *Store) {
 	defer conn.Close()
 	reader := bufio.NewReader(conn)
 	for {
@@ -48,13 +48,37 @@ func HandleConnection(conn net.Conn) {
 			return
 		}
 
-		if strings.ToUpper(args[0]) == "PING" {
+		switch strings.ToUpper(args[0]) {
+		case "PING":
 			writeSimpleString(conn, "PONG")
+		case "ECHO":
+			if len(args) > 1 {
+				writeBulkString(conn, strings.TrimSpace(strings.Join(args[1:], " ")))
+			} else {
+				writeError(conn, "ECHO command requires an argument")
+			}
+		case "SET":
+			if len(args) != 3 {
+				writeError(conn, "SET command requires exactly 2 arguments")
+			} else {
+				store.Set(args[1], args[2])
+				writeSimpleString(conn, "OK")
+			}
+		case "GET":
+			if len(args) != 2 {
+				writeError(conn, "GET command requires exactly 1 argument")
+			} else {
+				value, exists := store.Get(args[1])
+				if exists {
+					writeBulkString(conn, value)
+				} else {
+					writeNull(conn)
+				}
+			}
+		default:
+			writeError(conn, "Unknown Command: "+args[0])
 		}
 
-		if strings.ToUpper(args[0]) == "ECHO" && len(args) > 1 {
-			writeBulkString(conn, strings.TrimSpace(strings.Join(args[1:], " ")))
-		}
 	}
 
 }
@@ -108,4 +132,8 @@ func writeError(conn net.Conn, message string) {
 
 func writeBulkString(conn net.Conn, value string) {
 	conn.Write([]byte("$" + strconv.Itoa(len(value)) + "\r\n" + value + "\r\n"))
+}
+
+func writeNull(conn net.Conn) {
+	conn.Write([]byte("$-1\r\n"))
 }
