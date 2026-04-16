@@ -50,8 +50,10 @@ func HandleConnection(conn net.Conn) {
 		conn.Write([]byte("-ERR No command provided\r\n"))
 		return
 	}
+	for i := 0; i < len(args); i++ {
+		conn.Write([]byte("+PONG\r\n"))
+	}
 
-	conn.Write([]byte("+PONG\r\n"))
 }
 
 func parseRESP(reader *bufio.Reader) ([]string, error) {
