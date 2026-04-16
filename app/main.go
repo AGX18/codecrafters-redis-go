@@ -29,7 +29,7 @@ func main() {
 		}
 		logger.Println("Client connected:", conn.RemoteAddr())
 		// reading and parsing RESP commands from the client and responding with a simple PONG message
-		HandleConnection(conn)
+		go HandleConnection(conn)
 	}
 }
 
