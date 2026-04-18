@@ -117,44 +117,27 @@ func HandleConnection(conn net.Conn, store *Store) {
 			// LRANGE mylist start stop
 			if len(args) != 4 {
 				writeError(conn, "LRANGE command requires exactly 3 arguments")
-			} else {
-				list, exists := store.lists[args[1]]
-				if !exists {
-					writeArray(conn, []string{})
-					continue
-				}
-				start, err1 := strconv.Atoi(args[2])
-				stop, err2 := strconv.Atoi(args[3])
-				if err1 != nil || err2 != nil {
-					writeError(conn, "Invalid start or stop index")
-					continue
-				}
-
-				if start < 0 {
-					start += len(list)
-					if start < 0 {
-						start = 0
-					}
-				}
-				if stop < 0 {
-					stop += len(list)
-					if stop < 0 {
-						writeArray(conn, []string{})
-						continue
-					}
-				}
-
-				if start > stop {
-					writeArray(conn, []string{})
-					continue
-				}
-
-				if stop >= len(list) {
-					stop = len(list) - 1
-				}
-
-				writeArray(conn, list[start:stop+1])
 			}
+
+			start, err1 := strconv.Atoi(args[2])
+			if err1 != nil {
+				writeError(conn, "Invalid start index")
+				continue
+			}
+
+			stop, err2 := strconv.Atoi(args[3])
+			if err2 != nil {
+				writeError(conn, "Invalid stop index")
+				continue
+			}
+
+			LRangeResult, exists := store.LRange(args[1], start, stop, conn)
+			if exists {
+				writeArray(conn, LRangeResult)
+			} else {
+				writeArray(conn, []string{})
+			}
+
 		default:
 			writeError(conn, "Unknown Command: "+args[0])
 		}

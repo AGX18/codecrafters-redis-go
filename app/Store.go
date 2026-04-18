@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net"
 	"sync"
 	"time"
 )
@@ -75,4 +76,37 @@ func (s *Store) RPush(key string, values ...string) {
 		s.lists = make(map[string][]string)
 	}
 	s.lists[key] = append(s.lists[key], values...)
+}
+
+func (s *Store) LRange(key string, start, stop int, conn net.Conn) ([]string, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	list, exists := s.lists[key]
+	if !exists {
+		return nil, false
+	}
+
+	if start < 0 {
+		start += len(list)
+		if start < 0 {
+			start = 0
+		}
+	}
+	if stop < 0 {
+		stop += len(list)
+		if stop < 0 {
+			return []string{}, true
+		}
+	}
+
+	if start > stop {
+		writeArray(conn, []string{})
+		return []string{}, true
+	}
+
+	if stop >= len(list) {
+		stop = len(list) - 1
+	}
+
+	return list[start : stop+1], true
 }
