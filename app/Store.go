@@ -19,8 +19,9 @@ func (entry *Entry) IsExpired() bool {
 }
 
 type Store struct {
-	mu   sync.RWMutex
-	data map[string]Entry
+	mu    sync.RWMutex
+	data  map[string]Entry
+	lists map[string][]string
 }
 
 func (s *Store) Get(key string) (string, bool) {
@@ -65,4 +66,13 @@ func (s *Store) Set(key, value string, expiry ...time.Duration) {
 		expiresAt: time.Time{}, // No expiry
 		hasExpiry: false,
 	}
+}
+
+func (s *Store) RPush(key string, values ...string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.lists == nil {
+		s.lists = make(map[string][]string)
+	}
+	s.lists[key] = append(s.lists[key], values...)
 }

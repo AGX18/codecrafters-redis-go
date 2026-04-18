@@ -104,6 +104,14 @@ func HandleConnection(conn net.Conn, store *Store) {
 					writeNull(conn)
 				}
 			}
+		case "RPUSH":
+			// RPUSH mylist a b c
+			if len(args) < 3 {
+				writeError(conn, "RPUSH command requires at least 2 arguments")
+			} else {
+				store.RPush(args[1], args[2:]...)
+				writeInteger(conn, len(store.lists[args[1]]))
+			}
 		default:
 			writeError(conn, "Unknown Command: "+args[0])
 		}
@@ -149,20 +157,4 @@ func parseRESP(reader *bufio.Reader) ([]string, error) {
 	}
 
 	return args, nil
-}
-
-func writeSimpleString(conn net.Conn, value string) {
-	conn.Write([]byte("+" + value + "\r\n"))
-}
-
-func writeError(conn net.Conn, message string) {
-	conn.Write([]byte("-ERR " + message + "\r\n"))
-}
-
-func writeBulkString(conn net.Conn, value string) {
-	conn.Write([]byte("$" + strconv.Itoa(len(value)) + "\r\n" + value + "\r\n"))
-}
-
-func writeNull(conn net.Conn) {
-	conn.Write([]byte("$-1\r\n"))
 }
