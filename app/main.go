@@ -129,10 +129,6 @@ func HandleConnection(conn net.Conn, store *Store) {
 					writeError(conn, "Invalid start or stop index")
 					continue
 				}
-				if start > stop {
-					writeArray(conn, []string{})
-					continue
-				}
 
 				if start < 0 {
 					start += len(list)
@@ -143,9 +139,16 @@ func HandleConnection(conn net.Conn, store *Store) {
 				if stop < 0 {
 					stop += len(list)
 					if stop < 0 {
-						stop = 0
+						writeArray(conn, []string{})
+						continue
 					}
 				}
+
+				if start > stop {
+					writeArray(conn, []string{})
+					continue
+				}
+
 				if stop >= len(list) {
 					stop = len(list) - 1
 				}
