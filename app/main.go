@@ -160,6 +160,30 @@ func HandleConnection(conn net.Conn, store *Store) {
 				writeInteger(conn, length)
 			}
 
+		case "LPOP":
+			// The LPOP command is used to remove and return the first element of a list.
+			// LPOP mylist [count]
+			if len(args) < 2 || len(args) > 3 {
+				writeError(conn, "LPOP command requires 1 or 2 arguments")
+				continue
+			}
+
+			count := 1
+			if len(args) == 3 {
+				var err error
+				count, err = strconv.Atoi(args[2])
+				if err != nil {
+					writeError(conn, "Invalid count")
+					continue
+				}
+			}
+			poppedValues, exists := store.LPOP(args[1], count)
+			if exists {
+				writeArray(conn, poppedValues)
+			} else {
+				writeNull(conn)
+			}
+
 		default:
 			writeError(conn, "Unknown Command: "+args[0])
 		}

@@ -152,3 +152,21 @@ func (s *Store) LLEN(key string) int {
 	}
 	return list.Len()
 }
+
+func (s *Store) LPOP(key string, len int) ([]string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	list, exists := s.lists[key]
+	if !exists || list.Len() == 0 {
+		return []string{}, false
+	}
+
+	result := []string{}
+	for i := 0; i < len && list.Len() > 0; i++ {
+		front := list.Front()
+		value := front.Value.(string)
+		list.Remove(front)
+		result = append(result, value)
+	}
+	return result, true
+}
