@@ -130,7 +130,10 @@ func HandleConnection(conn net.Conn, store *Store) {
 					continue
 				}
 				if start < 0 {
-					start = 0
+					start += len(list)
+				}
+				if stop < 0 {
+					stop += len(list)
 				}
 				if stop >= len(list) {
 					stop = len(list) - 1
