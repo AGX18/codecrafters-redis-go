@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var logger = log.New(os.Stderr, "DEBUG: ", log.LstdFlags)
@@ -58,11 +59,39 @@ func HandleConnection(conn net.Conn, store *Store) {
 				writeError(conn, "ECHO command requires an argument")
 			}
 		case "SET":
-			if len(args) != 3 {
-				writeError(conn, "SET command requires exactly 2 arguments")
+			if len(args) < 3 {
+				writeError(conn, "SET command requires at least 2 arguments")
 			} else {
-				store.Set(args[1], args[2])
-				writeSimpleString(conn, "OK")
+				if len(args) == 5 {
+					multipliers := map[string]time.Duration{
+						"PX": time.Millisecond,
+						"EX": time.Second,
+					}
+
+					unit := strings.ToUpper(args[3])
+					multiplier, ok := multipliers[unit]
+					if !ok {
+						writeError(conn, "Invalid expiry option")
+						return
+					}
+
+					duration, err := strconv.Atoi(args[4])
+					if err != nil {
+						writeError(conn, "Invalid duration")
+						return
+					}
+
+					store.SetWithExpiry(args[1], args[2], time.Duration(duration)*multiplier)
+					writeSimpleString(conn, "OK")
+					continue
+				} else if len(args) == 3 { // No expiry
+					store.Set(args[1], args[2])
+					writeSimpleString(conn, "OK")
+					continue
+				} else { // Invalid number of arguments
+					writeError(conn, "Invalid number of arguments for SET command")
+					continue
+				}
 			}
 		case "GET":
 			if len(args) != 2 {
