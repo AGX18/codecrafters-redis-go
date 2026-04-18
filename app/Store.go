@@ -142,3 +142,13 @@ func (s *Store) LPUSH(key string, values []string) int {
 
 	return s.lists[key].Len()
 }
+
+func (s *Store) LLEN(key string) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	list, exists := s.lists[key]
+	if !exists {
+		return 0
+	}
+	return list.Len()
+}

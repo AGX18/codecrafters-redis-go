@@ -150,6 +150,16 @@ func HandleConnection(conn net.Conn, store *Store) {
 				writeArray(conn, []string{})
 			}
 
+		case "LLEN":
+			// The LLEN command is used to get the length of a list.
+			// LLEN mylist
+			if len(args) != 2 {
+				writeError(conn, "LLEN command requires exactly 1 argument")
+			} else {
+				length := store.LLEN(args[1])
+				writeInteger(conn, length)
+			}
+
 		default:
 			writeError(conn, "Unknown Command: "+args[0])
 		}
