@@ -112,6 +112,35 @@ func HandleConnection(conn net.Conn, store *Store) {
 				store.RPush(args[1], args[2:]...)
 				writeInteger(conn, len(store.lists[args[1]]))
 			}
+		case "LRANGE":
+			// The LRANGE command is used to retrieve elements from a list using a start index and a stop index.
+			// LRANGE mylist start stop
+			if len(args) != 4 {
+				writeError(conn, "LRANGE command requires exactly 3 arguments")
+			} else {
+				list, exists := store.lists[args[1]]
+				if !exists {
+					writeArray(conn, []string{})
+					continue
+				}
+				start, err1 := strconv.Atoi(args[2])
+				stop, err2 := strconv.Atoi(args[3])
+				if err1 != nil || err2 != nil {
+					writeError(conn, "Invalid start or stop index")
+					continue
+				}
+				if start < 0 {
+					start = 0
+				}
+				if stop >= len(list) {
+					stop = len(list) - 1
+				}
+				if start > stop {
+					writeArray(conn, []string{})
+					continue
+				}
+				writeArray(conn, list[start:stop+1])
+			}
 		default:
 			writeError(conn, "Unknown Command: "+args[0])
 		}

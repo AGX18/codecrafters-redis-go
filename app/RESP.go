@@ -25,3 +25,10 @@ func writeNull(conn net.Conn) {
 func writeInteger(conn net.Conn, value int) {
 	conn.Write([]byte(fmt.Sprintf(":%d\r\n", value)))
 }
+
+func writeArray(conn net.Conn, values []string) {
+	conn.Write([]byte(fmt.Sprintf("*%d\r\n", len(values))))
+	for _, v := range values {
+		writeBulkString(conn, v)
+	}
+}
