@@ -143,7 +143,7 @@ func HandleConnection(conn net.Conn, store *Store) {
 				continue
 			}
 
-			LRangeResult, exists := store.LRange(args[1], start, stop, conn)
+			LRangeResult, exists := store.LRange(args[1], start, stop)
 			if exists {
 				writeArray(conn, LRangeResult)
 			} else {

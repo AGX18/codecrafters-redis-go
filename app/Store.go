@@ -2,7 +2,6 @@ package main
 
 import (
 	"container/list"
-	"net"
 	"sync"
 	"time"
 )
@@ -85,7 +84,7 @@ func (s *Store) RPush(key string, values []string) int {
 	return s.lists[key].Len()
 }
 
-func (s *Store) LRange(key string, start, stop int, conn net.Conn) ([]string, bool) {
+func (s *Store) LRange(key string, start, stop int) ([]string, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	list, exists := s.lists[key]
@@ -107,7 +106,6 @@ func (s *Store) LRange(key string, start, stop int, conn net.Conn) ([]string, bo
 	}
 
 	if start > stop {
-		writeArray(conn, []string{})
 		return []string{}, true
 	}
 
