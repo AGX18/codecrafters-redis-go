@@ -153,7 +153,21 @@ func (s *Store) LLEN(key string) int {
 	return list.Len()
 }
 
-func (s *Store) LPOP(key string, len int) ([]string, bool) {
+func (s *Store) LPOP(key string) (string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	list, exists := s.lists[key]
+	if !exists || list.Len() == 0 {
+		return "", false
+	}
+
+	front := list.Front()
+	value := front.Value.(string)
+	list.Remove(front)
+	return value, true
+}
+
+func (s *Store) LPOPArray(key string, len int) ([]string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	list, exists := s.lists[key]

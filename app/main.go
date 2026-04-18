@@ -168,20 +168,26 @@ func HandleConnection(conn net.Conn, store *Store) {
 				continue
 			}
 
-			count := 1
 			if len(args) == 3 {
 				var err error
-				count, err = strconv.Atoi(args[2])
+				count, err := strconv.Atoi(args[2])
 				if err != nil {
 					writeError(conn, "Invalid count")
 					continue
 				}
-			}
-			poppedValues, exists := store.LPOP(args[1], count)
-			if exists {
-				writeArray(conn, poppedValues)
+				poppedValues, exists := store.LPOPArray(args[1], count)
+				if exists {
+					writeArray(conn, poppedValues)
+				} else {
+					writeNull(conn)
+				}
 			} else {
-				writeNull(conn)
+				poppedValue, exists := store.LPOP(args[1])
+				if exists {
+					writeBulkString(conn, poppedValue)
+				} else {
+					writeNull(conn)
+				}
 			}
 
 		default:
