@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"container/list"
 	"fmt"
 	"log"
 	"net"
@@ -14,7 +15,10 @@ import (
 var logger = log.New(os.Stderr, "DEBUG: ", log.LstdFlags)
 
 func main() {
-	store := &Store{}
+	store := &Store{
+		data:  make(map[string]Entry),
+		lists: make(map[string]*list.List),
+	}
 	logger.Println("Starting the Program")
 	listener, err := net.Listen("tcp", "0.0.0.0:6379")
 	if err != nil {
@@ -109,8 +113,16 @@ func HandleConnection(conn net.Conn, store *Store) {
 			if len(args) < 3 {
 				writeError(conn, "RPUSH command requires at least 2 arguments")
 			} else {
-				store.RPush(args[1], args[2:]...)
-				writeInteger(conn, len(store.lists[args[1]]))
+				length := store.RPush(args[1], args[2:])
+				writeInteger(conn, length)
+			}
+		case "LPUSH":
+			// LPUSH mylist a b c
+			if len(args) < 3 {
+				writeError(conn, "LPUSH command requires at least 2 arguments")
+			} else {
+				length := store.LPUSH(args[1], args[2:])
+				writeInteger(conn, length)
 			}
 		case "LRANGE":
 			// The LRANGE command is used to retrieve elements from a list using a start index and a stop index.

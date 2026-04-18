@@ -1,6 +1,7 @@
 package main
 
 import (
+	"container/list"
 	"net"
 	"sync"
 	"time"
@@ -22,7 +23,7 @@ func (entry *Entry) IsExpired() bool {
 type Store struct {
 	mu    sync.RWMutex
 	data  map[string]Entry
-	lists map[string][]string
+	lists map[string]*list.List
 }
 
 func (s *Store) Get(key string) (string, bool) {
@@ -69,13 +70,19 @@ func (s *Store) Set(key, value string, expiry ...time.Duration) {
 	}
 }
 
-func (s *Store) RPush(key string, values ...string) {
+func (s *Store) RPush(key string, values []string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.lists == nil {
-		s.lists = make(map[string][]string)
+
+	if _, ok := s.lists[key]; !ok {
+		s.lists[key] = list.New()
 	}
-	s.lists[key] = append(s.lists[key], values...)
+
+	for _, v := range values {
+		s.lists[key].PushBack(v)
+	}
+
+	return s.lists[key].Len()
 }
 
 func (s *Store) LRange(key string, start, stop int, conn net.Conn) ([]string, bool) {
@@ -87,13 +94,13 @@ func (s *Store) LRange(key string, start, stop int, conn net.Conn) ([]string, bo
 	}
 
 	if start < 0 {
-		start += len(list)
+		start += list.Len()
 		if start < 0 {
 			start = 0
 		}
 	}
 	if stop < 0 {
-		stop += len(list)
+		stop += list.Len()
 		if stop < 0 {
 			return []string{}, true
 		}
@@ -104,9 +111,36 @@ func (s *Store) LRange(key string, start, stop int, conn net.Conn) ([]string, bo
 		return []string{}, true
 	}
 
-	if stop >= len(list) {
-		stop = len(list) - 1
+	if stop >= list.Len() {
+		stop = list.Len() - 1
 	}
 
-	return list[start : stop+1], true
+	result := []string{}
+	i := 0
+	for e := list.Front(); e != nil; e = e.Next() {
+		if i > stop {
+			break
+		}
+		if i >= start {
+			result = append(result, e.Value.(string))
+		}
+		i++
+	}
+
+	return result, true
+}
+
+func (s *Store) LPUSH(key string, values []string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, ok := s.lists[key]; !ok {
+		s.lists[key] = list.New()
+	}
+
+	for _, v := range values {
+		s.lists[key].PushFront(v)
+	}
+
+	return s.lists[key].Len()
 }
