@@ -16,8 +16,9 @@ var logger = log.New(os.Stderr, "DEBUG: ", log.LstdFlags)
 
 func main() {
 	store := &Store{
-		data:  make(map[string]Entry),
-		lists: make(map[string]*list.List),
+		data:    make(map[string]Entry),
+		lists:   make(map[string]*list.List),
+		waiters: make(map[string][]chan string),
 	}
 	logger.Println("Starting the Program")
 	listener, err := net.Listen("tcp", "0.0.0.0:6379")
@@ -185,6 +186,25 @@ func HandleConnection(conn net.Conn, store *Store) {
 				poppedValue, exists := store.LPOP(args[1])
 				if exists {
 					writeBulkString(conn, poppedValue)
+				} else {
+					writeNull(conn)
+				}
+			}
+		case "BLPOP":
+			// The BLPOP command is used to remove and return the first element of a list, or block until one is available.
+			// BLPOP mylist timeout
+			if len(args) != 3 {
+				writeError(conn, "BLPOP command requires exactly 2 arguments")
+				continue
+			} else {
+				timeout, err := strconv.Atoi(args[2])
+				if err != nil {
+					writeError(conn, "Invalid timeout")
+					continue
+				}
+				value, exists := store.BLPOP(args[1], timeout)
+				if exists {
+					writeArray(conn, []string{args[1], value})
 				} else {
 					writeNull(conn)
 				}
