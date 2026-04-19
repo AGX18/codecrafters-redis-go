@@ -207,7 +207,7 @@ func HandleConnection(conn net.Conn, store *Store) {
 				if exists {
 					writeArray(conn, []string{args[1], value})
 				} else {
-					writeArray(conn, []string{})
+					writeNullArray(conn)
 				}
 			}
 
