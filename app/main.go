@@ -199,6 +199,7 @@ func HandleConnection(conn net.Conn, store *Store) {
 			} else {
 				timeout, err := strconv.ParseFloat(args[2], 64)
 				if err != nil {
+					logger.Printf("Invalid timeout value: %s", args[2])
 					writeError(conn, "Invalid timeout")
 					continue
 				}
@@ -206,7 +207,7 @@ func HandleConnection(conn net.Conn, store *Store) {
 				if exists {
 					writeArray(conn, []string{args[1], value})
 				} else {
-					writeNull(conn)
+					writeArray(conn, []string{})
 				}
 			}
 
