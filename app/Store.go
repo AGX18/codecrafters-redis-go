@@ -76,11 +76,10 @@ func (s *Store) RPush(key string, values []string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	listLength := s.lists[key].Len()
-
 	if _, ok := s.lists[key]; !ok {
 		s.lists[key] = list.New()
 	}
+	listLength := s.lists[key].Len()
 
 	for _, v := range values {
 		// if there are clients waiting for this key, we should send the value directly to the first waiting client
@@ -150,11 +149,10 @@ func (s *Store) LPUSH(key string, values []string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	listLength := s.lists[key].Len()
-
 	if _, ok := s.lists[key]; !ok {
 		s.lists[key] = list.New()
 	}
+	listLength := s.lists[key].Len()
 
 	for _, v := range values {
 		// if there are clients waiting for this key, we should send the value directly to the first waiting client
