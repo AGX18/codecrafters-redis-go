@@ -218,8 +218,8 @@ func (s *Store) LPOPArray(key string, len int) ([]string, bool) {
 	return result, true
 }
 
-func (s *Store) BLPOP(key string, timeout int) (string, bool) {
-	logger.Printf("BLPOP called with key: %s, timeout: %d", key, timeout)
+func (s *Store) BLPOP(key string, timeout float64) (string, bool) {
+	logger.Printf("BLPOP called with key: %s, timeout: %f", key, timeout)
 	s.mu.Lock()
 	if _, ok := s.lists[key]; !ok {
 		s.lists[key] = list.New()

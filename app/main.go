@@ -197,7 +197,7 @@ func HandleConnection(conn net.Conn, store *Store) {
 				writeError(conn, "BLPOP command requires exactly 2 arguments")
 				continue
 			} else {
-				timeout, err := strconv.Atoi(args[2])
+				timeout, err := strconv.ParseFloat(args[2], 64)
 				if err != nil {
 					writeError(conn, "Invalid timeout")
 					continue
