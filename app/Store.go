@@ -240,7 +240,8 @@ func (s *Store) BLPOP(key string, timeout float64) (string, bool) {
 	s.mu.Unlock()
 
 	var ctx context.Context
-	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Duration(timeout)*time.Second))
+	duration := time.Duration(timeout * float64(time.Second))
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(duration))
 	if timeout == 0 {
 		ctx = context.Background() // wait indefinitely
 	}
