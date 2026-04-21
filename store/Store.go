@@ -22,12 +22,17 @@ func (entry *Entry) IsExpired() bool {
 }
 
 type Store struct {
-	mu      sync.RWMutex
-	data    map[string]Entry
+	mu        sync.RWMutex
+	stringsMu sync.RWMutex
+	data      map[string]Entry
+
+	listsMu sync.RWMutex
 	lists   map[string]*list.List
 	waiters map[string][]chan string // key -> waiting clients
-	streams map[string]*Stream       // key -> stream data
-	logger  *log.Logger
+
+	streamsMu sync.RWMutex
+	streams   map[string]*Stream // key -> stream data
+	logger    *log.Logger
 }
 
 func NewStore(logger *log.Logger) *Store {
@@ -41,8 +46,8 @@ func NewStore(logger *log.Logger) *Store {
 }
 
 func (s *Store) Get(key string) (string, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.stringsMu.RLock()
+	defer s.stringsMu.RUnlock()
 	if s.data == nil {
 		return "", false
 	}
@@ -62,8 +67,8 @@ func (s *Store) SetWithExpiry(key, value string, duration time.Duration) {
 	if t := s.KeyType(key); t != None && t != String {
 		return // TODO: add an error return value
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.stringsMu.Lock()
+	defer s.stringsMu.Unlock()
 	if s.data == nil {
 		s.data = make(map[string]Entry)
 	}
@@ -78,8 +83,8 @@ func (s *Store) Set(key, value string, expiry ...time.Duration) {
 	if t := s.KeyType(key); t != None && t != String {
 		return // TODO: add an error return value
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.stringsMu.Lock()
+	defer s.stringsMu.Unlock()
 	if s.data == nil {
 		s.data = make(map[string]Entry)
 	}
@@ -96,8 +101,8 @@ func (s *Store) RPush(key string, values []string) int {
 	}
 
 	s.logger.Printf("RPUSH called with key: %s, values: %v", key, values)
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.listsMu.Lock()
+	defer s.listsMu.Unlock()
 
 	if _, ok := s.lists[key]; !ok {
 		s.lists[key] = list.New()
@@ -125,8 +130,8 @@ func (s *Store) RPush(key string, values []string) int {
 }
 
 func (s *Store) LRange(key string, start, stop int) ([]string, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.listsMu.RLock()
+	defer s.listsMu.RUnlock()
 	list, exists := s.lists[key]
 	if !exists {
 		return nil, false
@@ -172,8 +177,8 @@ func (s *Store) LPUSH(key string, values []string) int {
 	if t := s.KeyType(key); t != None && t != List {
 		return 0 // TODO: add an error return value to distinguish between wrong type and empty list
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.listsMu.Lock()
+	defer s.listsMu.Unlock()
 
 	if _, ok := s.lists[key]; !ok {
 		s.lists[key] = list.New()
@@ -199,8 +204,8 @@ func (s *Store) LPUSH(key string, values []string) int {
 }
 
 func (s *Store) LLEN(key string) int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.listsMu.RLock()
+	defer s.listsMu.RUnlock()
 	list, exists := s.lists[key]
 	if !exists {
 		return 0
@@ -212,8 +217,8 @@ func (s *Store) LPOP(key string) (string, bool) {
 	if t := s.KeyType(key); t != None && t != List {
 		return "", false // TODO: return an error instead of false to distinguish between wrong type and empty list
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.listsMu.Lock()
+	defer s.listsMu.Unlock()
 	list, exists := s.lists[key]
 	if !exists || list.Len() == 0 {
 		return "", false
@@ -233,8 +238,8 @@ func (s *Store) LPOPArray(key string, len int) ([]string, bool) {
 	if t := s.KeyType(key); t != None && t != List {
 		return []string{}, false // TODO: return an error instead of false to distinguish between wrong type and empty list
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.listsMu.Lock()
+	defer s.listsMu.Unlock()
 	list, exists := s.lists[key]
 	if !exists || list.Len() == 0 {
 		return []string{}, false
@@ -255,12 +260,12 @@ func (s *Store) BLPOP(key string, timeout float64) (string, bool) {
 		return "", false // TODO: return an error instead of false to distinguish between wrong type and empty list
 	}
 	s.logger.Printf("BLPOP called with key: %s, timeout: %f", key, timeout)
-	s.mu.Lock()
+	s.listsMu.Lock()
 	if _, ok := s.lists[key]; !ok {
 		s.lists[key] = list.New()
 	}
 	if s.lists[key].Len() > 0 {
-		s.mu.Unlock() // Unlock before calling LPOP to avoid deadlock
+		s.listsMu.Unlock() // Unlock before calling LPOP to avoid deadlock
 		return s.LPOP(key)
 	}
 
@@ -272,7 +277,7 @@ func (s *Store) BLPOP(key string, timeout float64) (string, bool) {
 	waiter := make(chan string, 1) // buffered channel to avoid blocking the producer
 	s.waiters[key] = append(s.waiters[key], waiter)
 
-	s.mu.Unlock()
+	s.listsMu.Unlock()
 
 	var ctx context.Context
 	duration := time.Duration(timeout * float64(time.Second))
@@ -296,16 +301,23 @@ func (s *Store) BLPOP(key string, timeout float64) (string, bool) {
 
 // KeyType checks the type of the value stored at the given key. It returns String, List, or None if the key does not exist.
 func (s *Store) KeyType(key string) DataType {
+	// TODO: optimize this by keeping track of the type of each key in a separate map, so we don't have to check each data structure every time
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	// check if the key exists in the string data map or the list data map to determine its type
+	s.stringsMu.RLock()
+	defer s.stringsMu.RUnlock()
 	if _, ok := s.data[key]; ok {
 		return String
 	}
+	s.listsMu.RLock()
+	defer s.listsMu.RUnlock()
 	if _, ok := s.lists[key]; ok {
 		return List
 	}
 
+	s.streamsMu.RLock()
+	defer s.streamsMu.RUnlock()
 	if _, ok := s.streams[key]; ok {
 		return StreamDT
 	}
