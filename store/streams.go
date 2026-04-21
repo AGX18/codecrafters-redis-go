@@ -164,11 +164,17 @@ func (s *Store) XRange(key string, startID, endID string) ([]StreamEntry, error)
 		return []StreamEntry{}, fmt.Errorf("Stream does not exist")
 	}
 
-	if len(strings.Split(startID, "-")) == 1 {
+	if startID == "-" {
+		// If the start ID is "-", we want to include all entries from the beginning of the stream, so we set startID to the ID of the first entry in the stream
+		startID = stream.entries[0].id
+	} else if len(strings.Split(startID, "-")) == 1 {
 		startID += "-0"
 	}
 
-	if len(strings.Split(endID, "-")) == 1 {
+	if endID == "+" {
+		// If the end ID is "+", we want to include all entries up to the last one, so we set endID to the ID of the last entry in the stream
+		endID = stream.entries[len(stream.entries)-1].id
+	} else if len(strings.Split(endID, "-")) == 1 {
 		endID += "-0"
 	}
 
