@@ -19,6 +19,7 @@ func main() {
 		data:    make(map[string]Entry),
 		lists:   make(map[string]*list.List),
 		waiters: make(map[string][]chan string),
+		streams: make(map[string]*Stream),
 	}
 	logger.Println("Starting the Program")
 	listener, err := net.Listen("tcp", "0.0.0.0:6379")
@@ -221,6 +222,24 @@ func HandleConnection(conn net.Conn, store *Store) {
 				writeSimpleString(conn, string(dataType))
 			}
 
+		case "XADD":
+			// The XADD command is used to append a new entry to a stream.
+			// XADD mystream * field1 value1 field2 value2
+			if len(args) < 5 || len(args)%2 == 0 {
+				writeError(conn, "XADD command requires at least 5 arguments and an even number of arguments")
+				continue
+			}
+			key, id, fields, err := getXAddArgs(args)
+			if err != nil {
+				writeError(conn, err.Error())
+				continue
+			}
+			entryID, err := store.XAdd(key, id, fields)
+			if err != nil {
+				writeError(conn, err.Error())
+				continue
+			}
+			writeBulkString(conn, entryID)
 		default:
 			writeError(conn, "Unknown Command: "+args[0])
 		}

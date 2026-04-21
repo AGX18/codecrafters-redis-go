@@ -5,7 +5,8 @@ package main
 type DataType string
 
 const (
-	String DataType = "string"
-	List   DataType = "list"
-	None   DataType = "none"
+	String    DataType = "string"
+	List      DataType = "list"
+	None      DataType = "none"
+	Stream_DT DataType = "stream"
 )

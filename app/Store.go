@@ -25,6 +25,7 @@ type Store struct {
 	data    map[string]Entry
 	lists   map[string]*list.List
 	waiters map[string][]chan string // key -> waiting clients
+	streams map[string]*Stream       // key -> stream data
 }
 
 func (s *Store) Get(key string) (string, bool) {
@@ -291,6 +292,10 @@ func (s *Store) keyType(key string) DataType {
 	}
 	if _, ok := s.lists[key]; ok {
 		return List
+	}
+
+	if _, ok := s.streams[key]; ok {
+		return Stream_DT
 	}
 	return None // Key does not exist
 }
