@@ -32,7 +32,7 @@ func GetXAddArgs(args []string) (string, string, map[string]string, error) {
 
 func (s *Store) XAdd(key string, ID string, fields map[string]string) (string, error) {
 	// check if key exists and is a stream, if not return an error
-	if t := s.KeyType(key); t != None && t != Stream_DT {
+	if t := s.KeyType(key); t != None && t != StreamDT {
 		return "", nil
 	}
 	// Validate the ID
