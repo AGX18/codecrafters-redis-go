@@ -41,6 +41,10 @@ func (s *Store) XAdd(key string, ID string, fields map[string]string) (string, e
 	}
 	// Validate the ID
 	millis, seq, err := parseID(ID)
+	if millis < 0 || seq < 0 || (millis == 0 && seq == 0) {
+		return "", fmt.Errorf("The ID specified in XADD must be greater than 0-0")
+	}
+
 	if err != nil {
 		return "", err
 	}
@@ -53,7 +57,7 @@ func (s *Store) XAdd(key string, ID string, fields map[string]string) (string, e
 			return "", fmt.Errorf("invalid ID format in existing entry: %s", lastEntryID)
 		}
 		if millis < lastMillis || (millis == lastMillis && seq <= lastSeq) {
-			return "", fmt.Errorf("ID must be greater than the last entry's ID")
+			return "", fmt.Errorf("The ID specified in XADD is equal or smaller than the target stream top item")
 		}
 	}
 	// Auto-generate ID parts if *
