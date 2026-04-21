@@ -307,7 +307,7 @@ func (s *Store) KeyType(key string) DataType {
 	}
 
 	if _, ok := s.streams[key]; ok {
-		return Stream_DT
+		return StreamDT
 	}
 	return None // Key does not exist
 }
