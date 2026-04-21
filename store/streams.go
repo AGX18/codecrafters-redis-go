@@ -12,6 +12,14 @@ type StreamEntry struct {
 	fields map[string]string
 }
 
+func (e StreamEntry) ID() string {
+	return e.id
+}
+
+func (e StreamEntry) Fields() map[string]string {
+	return e.fields
+}
+
 type Stream struct {
 	entries []StreamEntry
 }
@@ -144,6 +152,58 @@ func ValidateID(millis, seq int64, lastMillis, lastSeq int64) error {
 	// get the last entry's ID and compare with the new ID
 	if millis < lastMillis || (millis == lastMillis && seq <= lastSeq) {
 		return fmt.Errorf("The ID specified in XADD is equal or smaller than the target stream top item")
+	}
+	return nil
+}
+
+func (s *Store) XRange(key string, startID, endID string) ([]StreamEntry, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	stream, exists := s.streams[key]
+	if !exists {
+		return []StreamEntry{}, fmt.Errorf("Stream does not exist")
+	}
+
+	if len(strings.Split(startID, "-")) == 1 {
+		startID += "-0"
+	}
+
+	if len(strings.Split(endID, "-")) == 1 {
+		endID += "-0"
+	}
+
+	s.logger.Printf("XRANGE called with key: %s, startID: %s, endID: %s", key, startID, endID)
+
+	// Validate the IDs
+	if err := XRANGEValidation(startID, endID); err != nil {
+		return []StreamEntry{}, fmt.Errorf("Invalid ID range: %s - %s. Error: %s", startID, endID, err.Error())
+	}
+	result := []StreamEntry{}
+	for i, entry := range stream.entries {
+		if entry.id >= startID {
+			result = append(result, stream.entries[i])
+			if stream.entries[i].id == endID {
+				return result, nil
+			}
+		}
+	}
+	return []StreamEntry{}, fmt.Errorf("Start ID not found")
+
+}
+
+func XRANGEValidation(startID, endID string) error {
+	// Validate startID and endID format
+	sMilli, sSeq, err := parseID(startID)
+	if err != nil {
+		return fmt.Errorf("Invalid start ID format: %s", startID)
+	}
+	eMilli, eSeq, err := parseID(endID)
+	if err != nil {
+		return fmt.Errorf("Invalid end ID format: %s", endID)
+	}
+
+	if sMilli > eMilli || (sMilli == eMilli && sSeq > eSeq) {
+		return fmt.Errorf("Start ID must be less than or equal to End ID")
 	}
 	return nil
 }

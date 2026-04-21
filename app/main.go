@@ -237,6 +237,41 @@ func HandleConnection(conn net.Conn, store *Store.Store) {
 				continue
 			}
 			resp.WriteBulkString(conn, entryID)
+
+		case "XRANGE":
+			// The XRANGE command is used to retrieve a range of entries from a stream.
+			// XRANGE mystream start end
+			if len(args) < 2 {
+				resp.WriteError(conn, "XRANGE command requires at least 2 arguments")
+				continue
+			}
+			var key, start, end string
+
+			if len(args) >= 2 {
+				key = args[1]
+				key = strings.TrimSpace(key)
+			}
+			if len(args) >= 3 {
+				start = args[2]
+				start = strings.TrimSpace(start)
+			} else {
+				start = ""
+			}
+			if len(args) >= 4 {
+				end = args[3]
+				end = strings.TrimSpace(end)
+			} else {
+				end = ""
+			}
+
+			entries, err := store.XRange(key, start, end)
+			logger.Printf("XRANGE result for key: %s, start: %s, end: %s is %v with error: %v", key, start, end, entries, err)
+			if err == nil {
+				resp.WriteStreamEntries(conn, entries)
+			} else {
+				logger.Printf("Error retrieving stream entries: %v", err)
+				resp.WriteArray(conn, []string{})
+			}
 		default:
 			resp.WriteError(conn, "Unknown Command: "+args[0])
 		}
