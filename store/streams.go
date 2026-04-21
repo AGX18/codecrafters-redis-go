@@ -1,6 +1,10 @@
 package store
 
-import "fmt"
+import (
+	"fmt"
+	"strconv"
+	"strings"
+)
 
 type StreamEntry struct {
 	id     string
@@ -36,11 +40,27 @@ func (s *Store) XAdd(key string, ID string, fields map[string]string) (string, e
 		return "", nil
 	}
 	// Validate the ID
+	millis, seq, err := parseID(ID)
+	if err != nil {
+		return "", err
+	}
+	// get the last entry's ID and compare with the new ID
+	stream, exists := s.streams[key]
+	if exists && len(stream.entries) > 0 {
+		lastEntryID := stream.entries[len(stream.entries)-1].id
+		lastMillis, lastSeq, err := parseID(lastEntryID)
+		if err != nil {
+			return "", fmt.Errorf("invalid ID format in existing entry: %s", lastEntryID)
+		}
+		if millis < lastMillis || (millis == lastMillis && seq <= lastSeq) {
+			return "", fmt.Errorf("ID must be greater than the last entry's ID")
+		}
+	}
 	// Auto-generate ID parts if *
 	// Check ID is greater than last entry's ID
 
 	// check if stream exists, if not create it
-	stream, exists := s.streams[key]
+	stream, exists = s.streams[key]
 	if !exists {
 		stream = &Stream{}
 		s.streams[key] = stream
@@ -54,4 +74,23 @@ func (s *Store) XAdd(key string, ID string, fields map[string]string) (string, e
 
 	// Return the ID as a bulk string
 	return ID, nil
+}
+
+func parseID(ID string) (int64, int64, error) {
+	parts := strings.Split(ID, "-")
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("invalid ID format: %s", ID)
+	}
+
+	millis, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid millis part in ID: %s", parts[0])
+	}
+
+	seq, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid sequence part in ID: %s", parts[1])
+	}
+
+	return millis, seq, nil
 }
