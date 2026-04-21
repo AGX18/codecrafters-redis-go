@@ -281,7 +281,7 @@ func HandleConnection(conn net.Conn, store *Store.Store) {
 				resp.WriteError(conn, "XREAD command requires at least 4 arguments")
 				continue
 			}
-			if args[1] == "STREAMS" {
+			if strings.ToLower(args[1]) == "streams" {
 				key := args[2]
 				id := args[3]
 				entries, err := store.XRead(key, id)
