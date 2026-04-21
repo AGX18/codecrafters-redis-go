@@ -213,13 +213,25 @@ func XRANGEValidation(startID, endID string) error {
 	}
 	return nil
 }
+func (s *Store) XRead(keys []string, startID []string) ([][]StreamEntry, error) {
+	results := make([][]StreamEntry, 0, len(keys))
+	for i, key := range keys {
+		entries, err := s.XReadHelper(key, startID[i])
+		if err != nil {
+			return nil, fmt.Errorf("Error reading from stream %s: %v", key, err)
+		}
+		results = append(results, entries)
+	}
+	return results, nil
 
-func (s *Store) XRead(keys string, startID string) ([]StreamEntry, error) {
+}
+
+func (s *Store) XReadHelper(key string, startID string) ([]StreamEntry, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	result := []StreamEntry{}
 
-	stream, exists := s.streams[keys]
+	stream, exists := s.streams[key]
 	if !exists {
 		return nil, fmt.Errorf("Stream does not exist")
 	}
