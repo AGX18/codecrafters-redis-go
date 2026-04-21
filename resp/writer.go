@@ -51,3 +51,12 @@ func WriteStreamEntries(conn net.Conn, entries []store.StreamEntry) {
 		WriteArray(conn, fields)
 	}
 }
+
+func WriteStreamResults(conn net.Conn, keys []string, results [][]store.StreamEntry) {
+	conn.Write([]byte(fmt.Sprintf("*%d\r\n", len(results))))
+	for i, entries := range results {
+		conn.Write([]byte("*2\r\n"))
+		WriteBulkString(conn, keys[i])
+		WriteStreamEntries(conn, entries)
+	}
+}

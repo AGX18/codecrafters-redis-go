@@ -272,6 +272,28 @@ func HandleConnection(conn net.Conn, store *Store.Store) {
 				logger.Printf("Error retrieving stream entries: %v", err)
 				resp.WriteArray(conn, []string{})
 			}
+
+		case "XREAD":
+			// The XREAD command is used to read data from one or more streams, blocking until data is available.
+			// XREAD COUNT count BLOCK timeout STREAMS key [key ...] id [id ...]
+			logger.Printf("Received XREAD command with arguments: %v", args[1:])
+			if len(args) < 4 {
+				resp.WriteError(conn, "XREAD command requires at least 4 arguments")
+				continue
+			}
+			if args[1] == "STREAMS" {
+				key := args[2]
+				id := args[3]
+				entries, err := store.XRead(key, id)
+				logger.Printf("XREAD result for key: %s, id: %s is %v with error: %v", key, id, entries, err)
+				if err == nil {
+					resp.WriteStreamResults(conn, []string{key}, [][]Store.StreamEntry{entries})
+				} else {
+					logger.Printf("Error reading stream entries: %v", err)
+					resp.WriteArray(conn, []string{})
+				}
+
+			}
 		default:
 			resp.WriteError(conn, "Unknown Command: "+args[0])
 		}
