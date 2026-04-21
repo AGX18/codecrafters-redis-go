@@ -2,25 +2,22 @@ package main
 
 import (
 	"bufio"
-	"container/list"
-	"fmt"
 	"log"
 	"net"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/codecrafters-io/redis-starter-go/resp"
+	Store "github.com/codecrafters-io/redis-starter-go/store"
 )
 
 var logger = log.New(os.Stderr, "DEBUG: ", log.LstdFlags)
 
 func main() {
-	store := &Store{
-		data:    make(map[string]Entry),
-		lists:   make(map[string]*list.List),
-		waiters: make(map[string][]chan string),
-		streams: make(map[string]*Stream),
-	}
+	store := Store.NewStore(logger)
+
 	logger.Println("Starting the Program")
 	listener, err := net.Listen("tcp", "0.0.0.0:6379")
 	if err != nil {
@@ -40,33 +37,33 @@ func main() {
 	}
 }
 
-func HandleConnection(conn net.Conn, store *Store) {
+func HandleConnection(conn net.Conn, store *Store.Store) {
 	defer conn.Close()
 	reader := bufio.NewReader(conn)
 	for {
-		args, err := parseRESP(reader)
+		args, err := resp.ParseRESP(reader)
 		logger.Printf("Parsed arguments: %v", args)
 		if err != nil {
-			writeError(conn, err.Error())
+			resp.WriteError(conn, err.Error())
 			return
 		}
 		if len(args) == 0 {
-			writeError(conn, "No Command Provided")
+			resp.WriteError(conn, "No Command Provided")
 			return
 		}
 
 		switch strings.ToUpper(args[0]) {
 		case "PING":
-			writeSimpleString(conn, "PONG")
+			resp.WriteSimpleString(conn, "PONG")
 		case "ECHO":
 			if len(args) > 1 {
-				writeBulkString(conn, strings.TrimSpace(strings.Join(args[1:], " ")))
+				resp.WriteBulkString(conn, strings.TrimSpace(strings.Join(args[1:], " ")))
 			} else {
-				writeError(conn, "ECHO command requires an argument")
+				resp.WriteError(conn, "ECHO command requires an argument")
 			}
 		case "SET":
 			if len(args) < 3 {
-				writeError(conn, "SET command requires at least 2 arguments")
+				resp.WriteError(conn, "SET command requires at least 2 arguments")
 			} else {
 				if len(args) == 5 {
 					multipliers := map[string]time.Duration{
@@ -77,96 +74,96 @@ func HandleConnection(conn net.Conn, store *Store) {
 					unit := strings.ToUpper(args[3])
 					multiplier, ok := multipliers[unit]
 					if !ok {
-						writeError(conn, "Invalid expiry option")
+						resp.WriteError(conn, "Invalid expiry option")
 						return
 					}
 
 					duration, err := strconv.Atoi(args[4])
 					if err != nil {
-						writeError(conn, "Invalid duration")
+						resp.WriteError(conn, "Invalid duration")
 						return
 					}
 
 					store.SetWithExpiry(args[1], args[2], time.Duration(duration)*multiplier)
-					writeSimpleString(conn, "OK")
+					resp.WriteSimpleString(conn, "OK")
 					continue
 				} else if len(args) == 3 { // No expiry
 					store.Set(args[1], args[2])
-					writeSimpleString(conn, "OK")
+					resp.WriteSimpleString(conn, "OK")
 					continue
 				} else { // Invalid number of arguments
-					writeError(conn, "Invalid number of arguments for SET command")
+					resp.WriteError(conn, "Invalid number of arguments for SET command")
 					continue
 				}
 			}
 		case "GET":
 			if len(args) != 2 {
-				writeError(conn, "GET command requires exactly 1 argument")
+				resp.WriteError(conn, "GET command requires exactly 1 argument")
 			} else {
 				value, exists := store.Get(args[1])
 				if exists {
-					writeBulkString(conn, value)
+					resp.WriteBulkString(conn, value)
 				} else {
-					writeNull(conn)
+					resp.WriteNull(conn)
 				}
 			}
 		case "RPUSH":
 			// RPUSH mylist a b c
 			if len(args) < 3 {
-				writeError(conn, "RPUSH command requires at least 2 arguments")
+				resp.WriteError(conn, "RPUSH command requires at least 2 arguments")
 			} else {
 				length := store.RPush(args[1], args[2:])
-				writeInteger(conn, length)
+				resp.WriteInteger(conn, length)
 			}
 		case "LPUSH":
 			// LPUSH mylist a b c
 			if len(args) < 3 {
-				writeError(conn, "LPUSH command requires at least 2 arguments")
+				resp.WriteError(conn, "LPUSH command requires at least 2 arguments")
 			} else {
 				length := store.LPUSH(args[1], args[2:])
-				writeInteger(conn, length)
+				resp.WriteInteger(conn, length)
 			}
 		case "LRANGE":
 			// The LRANGE command is used to retrieve elements from a list using a start index and a stop index.
 			// LRANGE mylist start stop
 			if len(args) != 4 {
-				writeError(conn, "LRANGE command requires exactly 3 arguments")
+				resp.WriteError(conn, "LRANGE command requires exactly 3 arguments")
 			}
 
 			start, err1 := strconv.Atoi(args[2])
 			if err1 != nil {
-				writeError(conn, "Invalid start index")
+				resp.WriteError(conn, "Invalid start index")
 				continue
 			}
 
 			stop, err2 := strconv.Atoi(args[3])
 			if err2 != nil {
-				writeError(conn, "Invalid stop index")
+				resp.WriteError(conn, "Invalid stop index")
 				continue
 			}
 
 			LRangeResult, exists := store.LRange(args[1], start, stop)
 			if exists {
-				writeArray(conn, LRangeResult)
+				resp.WriteArray(conn, LRangeResult)
 			} else {
-				writeArray(conn, []string{})
+				resp.WriteArray(conn, []string{})
 			}
 
 		case "LLEN":
 			// The LLEN command is used to get the length of a list.
 			// LLEN mylist
 			if len(args) != 2 {
-				writeError(conn, "LLEN command requires exactly 1 argument")
+				resp.WriteError(conn, "LLEN command requires exactly 1 argument")
 			} else {
 				length := store.LLEN(args[1])
-				writeInteger(conn, length)
+				resp.WriteInteger(conn, length)
 			}
 
 		case "LPOP":
 			// The LPOP command is used to remove and return the first element of a list.
 			// LPOP mylist [count]
 			if len(args) < 2 || len(args) > 3 {
-				writeError(conn, "LPOP command requires 1 or 2 arguments")
+				resp.WriteError(conn, "LPOP command requires 1 or 2 arguments")
 				continue
 			}
 
@@ -174,41 +171,41 @@ func HandleConnection(conn net.Conn, store *Store) {
 				var err error
 				count, err := strconv.Atoi(args[2])
 				if err != nil {
-					writeError(conn, "Invalid count")
+					resp.WriteError(conn, "Invalid count")
 					continue
 				}
 				poppedValues, exists := store.LPOPArray(args[1], count)
 				if exists {
-					writeArray(conn, poppedValues)
+					resp.WriteArray(conn, poppedValues)
 				} else {
-					writeNull(conn)
+					resp.WriteNull(conn)
 				}
 			} else {
 				poppedValue, exists := store.LPOP(args[1])
 				if exists {
-					writeBulkString(conn, poppedValue)
+					resp.WriteBulkString(conn, poppedValue)
 				} else {
-					writeNull(conn)
+					resp.WriteNull(conn)
 				}
 			}
 		case "BLPOP":
 			// The BLPOP command is used to remove and return the first element of a list, or block until one is available.
 			// BLPOP mylist timeout
 			if len(args) != 3 {
-				writeError(conn, "BLPOP command requires exactly 2 arguments")
+				resp.WriteError(conn, "BLPOP command requires exactly 2 arguments")
 				continue
 			} else {
 				timeout, err := strconv.ParseFloat(args[2], 64)
 				if err != nil {
 					logger.Printf("Invalid timeout value: %s", args[2])
-					writeError(conn, "Invalid timeout")
+					resp.WriteError(conn, "Invalid timeout")
 					continue
 				}
 				value, exists := store.BLPOP(args[1], timeout)
 				if exists {
-					writeArray(conn, []string{args[1], value})
+					resp.WriteArray(conn, []string{args[1], value})
 				} else {
-					writeNullArray(conn)
+					resp.WriteNullArray(conn)
 				}
 			}
 
@@ -216,73 +213,34 @@ func HandleConnection(conn net.Conn, store *Store) {
 			// The TYPE command is used to determine the type of the value stored at a key.
 			// TYPE mykey
 			if len(args) != 2 {
-				writeError(conn, "TYPE command requires exactly 1 argument")
+				resp.WriteError(conn, "TYPE command requires exactly 1 argument")
 			} else {
-				dataType := store.keyType(args[1])
-				writeSimpleString(conn, string(dataType))
+				dataType := store.KeyType(args[1])
+				resp.WriteSimpleString(conn, string(dataType))
 			}
 
 		case "XADD":
 			// The XADD command is used to append a new entry to a stream.
 			// XADD mystream * field1 value1 field2 value2
 			if len(args) < 5 || len(args)%2 == 0 {
-				writeError(conn, "XADD command requires at least 5 arguments and an even number of arguments")
+				resp.WriteError(conn, "XADD command requires at least 5 arguments and an even number of arguments")
 				continue
 			}
-			key, id, fields, err := getXAddArgs(args)
+			key, id, fields, err := Store.GetXAddArgs(args)
 			if err != nil {
-				writeError(conn, err.Error())
+				resp.WriteError(conn, err.Error())
 				continue
 			}
 			entryID, err := store.XAdd(key, id, fields)
 			if err != nil {
-				writeError(conn, err.Error())
+				resp.WriteError(conn, err.Error())
 				continue
 			}
-			writeBulkString(conn, entryID)
+			resp.WriteBulkString(conn, entryID)
 		default:
-			writeError(conn, "Unknown Command: "+args[0])
+			resp.WriteError(conn, "Unknown Command: "+args[0])
 		}
 
 	}
 
-}
-
-func parseRESP(reader *bufio.Reader) ([]string, error) {
-	line, err := reader.ReadString('\n')
-	if err != nil {
-		return nil, err
-	}
-	line = strings.TrimSpace(line)
-	logger.Printf("Received line: %s", line)
-
-	if line[0] != '*' {
-		return nil, fmt.Errorf("expected array, got %s", line)
-	}
-
-	count, err := strconv.Atoi(line[1:])
-	if err != nil {
-		return nil, fmt.Errorf("invalid array count: %s", line[1:])
-	}
-	args := make([]string, 0, count)
-
-	for range count {
-		// Read the $N line
-		logger.Printf("Reading argument %d", len(args)+1)
-		n, err := reader.ReadString('\n')
-		if err != nil {
-			return nil, err
-		}
-		logger.Printf("Received length: %s", n)
-
-		// Read the actual value
-		value, err := reader.ReadString('\n')
-		logger.Printf("Received argument: %s", value)
-		if err != nil {
-			return nil, err
-		}
-		args = append(args, strings.TrimSpace(value))
-	}
-
-	return args, nil
 }

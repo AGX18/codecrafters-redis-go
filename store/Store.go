@@ -1,8 +1,9 @@
-package main
+package store
 
 import (
 	"container/list"
 	"context"
+	"log"
 	"sync"
 	"time"
 )
@@ -26,6 +27,17 @@ type Store struct {
 	lists   map[string]*list.List
 	waiters map[string][]chan string // key -> waiting clients
 	streams map[string]*Stream       // key -> stream data
+	logger  *log.Logger
+}
+
+func NewStore(logger *log.Logger) *Store {
+	return &Store{
+		data:    make(map[string]Entry),
+		lists:   make(map[string]*list.List),
+		waiters: make(map[string][]chan string),
+		streams: make(map[string]*Stream),
+		logger:  logger,
+	}
 }
 
 func (s *Store) Get(key string) (string, bool) {
@@ -47,7 +59,7 @@ func (s *Store) Get(key string) (string, bool) {
 }
 
 func (s *Store) SetWithExpiry(key, value string, duration time.Duration) {
-	if t := s.keyType(key); t != None && t != String {
+	if t := s.KeyType(key); t != None && t != String {
 		return // TODO: add an error return value
 	}
 	s.mu.Lock()
@@ -63,7 +75,7 @@ func (s *Store) SetWithExpiry(key, value string, duration time.Duration) {
 }
 
 func (s *Store) Set(key, value string, expiry ...time.Duration) {
-	if t := s.keyType(key); t != None && t != String {
+	if t := s.KeyType(key); t != None && t != String {
 		return // TODO: add an error return value
 	}
 	s.mu.Lock()
@@ -79,11 +91,11 @@ func (s *Store) Set(key, value string, expiry ...time.Duration) {
 }
 
 func (s *Store) RPush(key string, values []string) int {
-	if t := s.keyType(key); t != None && t != List {
+	if t := s.KeyType(key); t != None && t != List {
 		return 0 // TODO: add an error return value to distinguish between wrong type and empty list
 	}
 
-	logger.Printf("RPUSH called with key: %s, values: %v", key, values)
+	s.logger.Printf("RPUSH called with key: %s, values: %v", key, values)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -97,14 +109,14 @@ func (s *Store) RPush(key string, values []string) int {
 		// instead of pushing it to the list
 		waiters, hasWaiters := s.waiters[key]
 		if hasWaiters && len(waiters) > 0 {
-			logger.Printf("RPUSH notifying waiter for key: %s with value: %s", key, v)
+			s.logger.Printf("RPUSH notifying waiter for key: %s with value: %s", key, v)
 			// notify the first waiter in the queue
 			waiter := waiters[0]
 			waiter <- v
 			// remove this waiter from the list of waiters for this key
 			s.waiters[key] = s.waiters[key][1:]
 		} else {
-			logger.Printf("RPUSH adding value: %s for key: %s", v, key)
+			s.logger.Printf("RPUSH adding value: %s for key: %s", v, key)
 			s.lists[key].PushBack(v)
 		}
 	}
@@ -157,7 +169,7 @@ func (s *Store) LRange(key string, start, stop int) ([]string, bool) {
 }
 
 func (s *Store) LPUSH(key string, values []string) int {
-	if t := s.keyType(key); t != None && t != List {
+	if t := s.KeyType(key); t != None && t != List {
 		return 0 // TODO: add an error return value to distinguish between wrong type and empty list
 	}
 	s.mu.Lock()
@@ -197,7 +209,7 @@ func (s *Store) LLEN(key string) int {
 }
 
 func (s *Store) LPOP(key string) (string, bool) {
-	if t := s.keyType(key); t != None && t != List {
+	if t := s.KeyType(key); t != None && t != List {
 		return "", false // TODO: return an error instead of false to distinguish between wrong type and empty list
 	}
 	s.mu.Lock()
@@ -218,7 +230,7 @@ func (s *Store) LPOP(key string) (string, bool) {
 }
 
 func (s *Store) LPOPArray(key string, len int) ([]string, bool) {
-	if t := s.keyType(key); t != None && t != List {
+	if t := s.KeyType(key); t != None && t != List {
 		return []string{}, false // TODO: return an error instead of false to distinguish between wrong type and empty list
 	}
 	s.mu.Lock()
@@ -239,10 +251,10 @@ func (s *Store) LPOPArray(key string, len int) ([]string, bool) {
 }
 
 func (s *Store) BLPOP(key string, timeout float64) (string, bool) {
-	if t := s.keyType(key); t != None && t != List {
+	if t := s.KeyType(key); t != None && t != List {
 		return "", false // TODO: return an error instead of false to distinguish between wrong type and empty list
 	}
-	logger.Printf("BLPOP called with key: %s, timeout: %f", key, timeout)
+	s.logger.Printf("BLPOP called with key: %s, timeout: %f", key, timeout)
 	s.mu.Lock()
 	if _, ok := s.lists[key]; !ok {
 		s.lists[key] = list.New()
@@ -273,17 +285,17 @@ func (s *Store) BLPOP(key string, timeout float64) (string, bool) {
 	select {
 	case value := <-waiter:
 		// got a value from a producer, return it to the client
-		logger.Printf("BLPOP returning value: %s for key: %s", value, key)
+		s.logger.Printf("BLPOP returning value: %s for key: %s", value, key)
 		return value, true
 	case <-ctx.Done():
 		// timeout expired, return null
-		logger.Printf("BLPOP timeout expired for key: %s", key)
+		s.logger.Printf("BLPOP timeout expired for key: %s", key)
 		return "", false
 	}
 }
 
-// keyType checks the type of the value stored at the given key. It returns String, List, or None if the key does not exist.
-func (s *Store) keyType(key string) DataType {
+// KeyType checks the type of the value stored at the given key. It returns String, List, or None if the key does not exist.
+func (s *Store) KeyType(key string) DataType {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	// check if the key exists in the string data map or the list data map to determine its type

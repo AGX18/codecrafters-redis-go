@@ -1,4 +1,4 @@
-package main
+package store
 
 import "fmt"
 
@@ -11,7 +11,7 @@ type Stream struct {
 	entries []StreamEntry
 }
 
-func getXAddArgs(args []string) (string, string, map[string]string, error) {
+func GetXAddArgs(args []string) (string, string, map[string]string, error) {
 	// XADD mystream * field1 value1 field2 value2
 	if len(args) < 5 || len(args)%2 == 0 {
 		return "", "", nil, fmt.Errorf("XADD command requires at least 5 arguments and an even number of arguments")
@@ -32,7 +32,7 @@ func getXAddArgs(args []string) (string, string, map[string]string, error) {
 
 func (s *Store) XAdd(key string, ID string, fields map[string]string) (string, error) {
 	// check if key exists and is a stream, if not return an error
-	if t := s.keyType(key); t != None && t != Stream_DT {
+	if t := s.KeyType(key); t != None && t != Stream_DT {
 		return "", nil
 	}
 	// Validate the ID

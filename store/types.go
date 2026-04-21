@@ -1,4 +1,4 @@
-package main
+package store
 
 // Data types in redis
 
