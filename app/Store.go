@@ -46,6 +46,9 @@ func (s *Store) Get(key string) (string, bool) {
 }
 
 func (s *Store) SetWithExpiry(key, value string, duration time.Duration) {
+	if t := s.keyType(key); t != None && t != String {
+		return // TODO: add an error return value
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.data == nil {
@@ -59,6 +62,9 @@ func (s *Store) SetWithExpiry(key, value string, duration time.Duration) {
 }
 
 func (s *Store) Set(key, value string, expiry ...time.Duration) {
+	if t := s.keyType(key); t != None && t != String {
+		return // TODO: add an error return value
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.data == nil {
@@ -72,6 +78,10 @@ func (s *Store) Set(key, value string, expiry ...time.Duration) {
 }
 
 func (s *Store) RPush(key string, values []string) int {
+	if t := s.keyType(key); t != None && t != List {
+		return 0 // TODO: add an error return value to distinguish between wrong type and empty list
+	}
+
 	logger.Printf("RPUSH called with key: %s, values: %v", key, values)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -146,6 +156,9 @@ func (s *Store) LRange(key string, start, stop int) ([]string, bool) {
 }
 
 func (s *Store) LPUSH(key string, values []string) int {
+	if t := s.keyType(key); t != None && t != List {
+		return 0 // TODO: add an error return value to distinguish between wrong type and empty list
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -183,6 +196,9 @@ func (s *Store) LLEN(key string) int {
 }
 
 func (s *Store) LPOP(key string) (string, bool) {
+	if t := s.keyType(key); t != None && t != List {
+		return "", false // TODO: return an error instead of false to distinguish between wrong type and empty list
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	list, exists := s.lists[key]
@@ -201,6 +217,9 @@ func (s *Store) LPOP(key string) (string, bool) {
 }
 
 func (s *Store) LPOPArray(key string, len int) ([]string, bool) {
+	if t := s.keyType(key); t != None && t != List {
+		return []string{}, false // TODO: return an error instead of false to distinguish between wrong type and empty list
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	list, exists := s.lists[key]
@@ -219,6 +238,9 @@ func (s *Store) LPOPArray(key string, len int) ([]string, bool) {
 }
 
 func (s *Store) BLPOP(key string, timeout float64) (string, bool) {
+	if t := s.keyType(key); t != None && t != List {
+		return "", false // TODO: return an error instead of false to distinguish between wrong type and empty list
+	}
 	logger.Printf("BLPOP called with key: %s, timeout: %f", key, timeout)
 	s.mu.Lock()
 	if _, ok := s.lists[key]; !ok {
@@ -257,4 +279,18 @@ func (s *Store) BLPOP(key string, timeout float64) (string, bool) {
 		logger.Printf("BLPOP timeout expired for key: %s", key)
 		return "", false
 	}
+}
+
+// keyType checks the type of the value stored at the given key. It returns String, List, or None if the key does not exist.
+func (s *Store) keyType(key string) DataType {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	// check if the key exists in the string data map or the list data map to determine its type
+	if _, ok := s.data[key]; ok {
+		return String
+	}
+	if _, ok := s.lists[key]; ok {
+		return List
+	}
+	return None // Key does not exist
 }

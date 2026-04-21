@@ -211,6 +211,16 @@ func HandleConnection(conn net.Conn, store *Store) {
 				}
 			}
 
+		case "TYPE":
+			// The TYPE command is used to determine the type of the value stored at a key.
+			// TYPE mykey
+			if len(args) != 2 {
+				writeError(conn, "TYPE command requires exactly 1 argument")
+			} else {
+				dataType := store.keyType(args[1])
+				writeSimpleString(conn, string(dataType))
+			}
+
 		default:
 			writeError(conn, "Unknown Command: "+args[0])
 		}
