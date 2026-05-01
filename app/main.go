@@ -323,7 +323,7 @@ func HandleConnection(conn net.Conn, store *Store.Store) {
 				resp.WriteStreamEntries(conn, entries)
 			} else {
 				logger.Printf("Error retrieving stream entries: %v", err)
-				resp.WriteNullArray(conn)
+				resp.WriteArray(conn, []string{})
 			}
 
 		case "XREAD":
@@ -352,7 +352,7 @@ func HandleConnection(conn net.Conn, store *Store.Store) {
 			} else {
 				entries, err := store.XReadBlocking(xreadArgs.options.timeout, xreadArgs.keys, xreadArgs.ids)
 				if err != nil {
-					resp.WriteArray(conn, []string{})
+					resp.WriteNullArray(conn)
 					logger.Printf("Error reading stream entries: %v", err)
 				} else {
 					resp.WriteStreamResults(conn, xreadArgs.keys, entries)
