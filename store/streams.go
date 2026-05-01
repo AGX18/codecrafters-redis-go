@@ -14,14 +14,6 @@ type StreamID struct {
 	Seq int64 // sequence number
 }
 
-func NewIDFromString(ID string) StreamID {
-	ms, seq, err := parseID(ID)
-	if err != nil {
-		return StreamID{Ms: 0, Seq: 0}
-	}
-	return StreamID{Ms: ms, Seq: seq}
-}
-
 func (a StreamID) Less(b StreamID) bool {
 	if a.Ms != b.Ms {
 		return a.Ms < b.Ms
@@ -74,35 +66,36 @@ func (s *Store) XAdd(key string, ID string, fields map[string]string) (string, e
 	defer s.mu.Unlock()
 	// Validate the ID
 	s.logger.Printf("validating ID: %s for stream: %s", ID, key)
-	var millis, seq int64
 	var err error
-	var lastMillis, lastSeq int64
+	var LastID StreamID
+	var parsedID StreamID
+	var seq, millis int64
 	// get the last entry's ID and compare with the new ID
 	Laststream, exists := s.streams[key]
 	if exists && len(Laststream.entries) > 0 {
 		lastEntryID := Laststream.entries[len(Laststream.entries)-1].id
-		lastMillis, lastSeq, err = parseID(lastEntryID)
+		LastID, err = parseID(lastEntryID)
 		if err != nil {
 			return "", fmt.Errorf("Invalid last entry ID format: %s", lastEntryID)
 		}
 	} else {
-		lastMillis, lastSeq = 0, 0
+		LastID = StreamID{0, 0}
 	}
 
 	if !strings.Contains(ID, "*") {
-		millis, seq, err = parseID(ID)
+		parsedID, err = parseID(ID)
 		if err != nil {
 			return "", fmt.Errorf("Invalid ID format: %s", ID)
 		}
-		if err := ValidateID(millis, seq, lastMillis, lastSeq); err != nil {
+		if err := ValidateID(parsedID, LastID); err != nil {
 			return "", err
 		}
 	} else {
 		// Auto-generate ID parts if *
 		if ID == "*" {
-			millis = time.Now().UnixMilli()
-			if lastMillis == millis {
-				seq = lastSeq + 1
+			millis := time.Now().UnixMilli()
+			if LastID.Ms == millis {
+				seq = LastID.Seq + 1
 			} else {
 				seq = 0
 			}
@@ -120,8 +113,8 @@ func (s *Store) XAdd(key string, ID string, fields map[string]string) (string, e
 				}
 			}
 			if parts[1] == "*" { // Auto-generate seq part
-				if lastMillis == millis {
-					seq = lastSeq + 1
+				if LastID.Ms == millis {
+					seq = LastID.Seq + 1
 				} else {
 					seq = 0
 				}
@@ -161,31 +154,31 @@ func (s *Store) XAdd(key string, ID string, fields map[string]string) (string, e
 	return ID, nil
 }
 
-func parseID(ID string) (int64, int64, error) {
+func parseID(ID string) (StreamID, error) {
 	parts := strings.Split(ID, "-")
 	if len(parts) != 2 {
-		return 0, 0, fmt.Errorf("invalid ID format: %s", ID)
+		return StreamID{0, 0}, fmt.Errorf("invalid ID format: %s", ID)
 	}
 
 	millis, err := strconv.ParseInt(parts[0], 10, 64)
 	if err != nil {
-		return 0, 0, fmt.Errorf("invalid millis part in ID: %s", parts[0])
+		return StreamID{0, 0}, fmt.Errorf("invalid millis part in ID: %s", parts[0])
 	}
 
 	seq, err := strconv.ParseInt(parts[1], 10, 64)
 	if err != nil {
-		return 0, 0, fmt.Errorf("invalid sequence part in ID: %s", parts[1])
+		return StreamID{0, 0}, fmt.Errorf("invalid sequence part in ID: %s", parts[1])
 	}
 
-	return millis, seq, nil
+	return StreamID{Ms: millis, Seq: seq}, nil
 }
 
-func ValidateID(millis, seq int64, lastMillis, lastSeq int64) error {
-	if millis < 0 || seq < 0 || (millis == 0 && seq == 0) {
+func ValidateID(ID StreamID, LastID StreamID) error {
+	if ID.Ms < 0 || ID.Seq < 0 || (ID.Ms == 0 && ID.Seq == 0) {
 		return fmt.Errorf("The ID specified in XADD must be greater than 0-0")
 	}
 	// get the last entry's ID and compare with the new ID
-	if millis < lastMillis || (millis == lastMillis && seq <= lastSeq) {
+	if ID.Ms < LastID.Ms || (ID.Ms == LastID.Ms && ID.Seq <= LastID.Seq) {
 		return fmt.Errorf("The ID specified in XADD is equal or smaller than the target stream top item")
 	}
 	return nil
@@ -234,16 +227,16 @@ func (s *Store) XRange(key string, startID, endID string) ([]StreamEntry, error)
 
 func XRANGEValidation(startID, endID string) error {
 	// Validate startID and endID format
-	sMilli, sSeq, err := parseID(startID)
+	SID, err := parseID(startID)
 	if err != nil {
 		return fmt.Errorf("Invalid start ID format: %s", startID)
 	}
-	eMilli, eSeq, err := parseID(endID)
+	EID, err := parseID(endID)
 	if err != nil {
 		return fmt.Errorf("Invalid end ID format: %s", endID)
 	}
 
-	if sMilli > eMilli || (sMilli == eMilli && sSeq > eSeq) {
+	if SID.Ms > EID.Ms || (SID.Ms == EID.Ms && SID.Seq > EID.Seq) {
 		return fmt.Errorf("Start ID must be less than or equal to End ID")
 	}
 	return nil
@@ -318,19 +311,19 @@ func (s *Store) XReadBlocking(timeout time.Duration, keys []string, ids []string
 }
 
 func LessThan(ID1, ID2 string) (bool, error) {
-	m1, s1, err1 := parseID(ID1)
+	parsedID1, err1 := parseID(ID1)
 	if err1 != nil {
 		return false, err1
 	}
-	m2, s2, err2 := parseID(ID2)
+	parsedID2, err2 := parseID(ID2)
 	if err2 != nil {
 		return false, err2
 	}
 
-	if m1 != m2 {
-		return m1 < m2, nil
+	if parsedID1.Ms != parsedID2.Ms {
+		return parsedID1.Ms < parsedID2.Ms, nil
 	}
-	return s1 < s2, nil
+	return parsedID1.Seq < parsedID2.Seq, nil
 
 }
 
