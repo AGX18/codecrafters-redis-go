@@ -323,7 +323,7 @@ func HandleConnection(conn net.Conn, store *Store.Store) {
 				resp.WriteStreamEntries(conn, entries)
 			} else {
 				logger.Printf("Error retrieving stream entries: %v", err)
-				resp.WriteNullArray()
+				resp.WriteNullArray(conn)
 			}
 
 		case "XREAD":
