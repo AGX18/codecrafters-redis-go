@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -14,6 +15,58 @@ import (
 )
 
 var logger = log.New(os.Stderr, "DEBUG: ", log.LstdFlags)
+
+type XReadOptions struct {
+	block   bool
+	timeout time.Duration
+	count   int // 0 means no limit
+}
+
+type XReadArgs struct {
+	options XReadOptions
+	keys    []string
+	ids     []string
+}
+
+func parseXReadArgs(args []string) (XReadArgs, error) {
+	result := XReadArgs{}
+	i := 0
+
+	for i < len(args) {
+		switch strings.ToUpper(args[i]) {
+		case "COUNT":
+			i++
+			count, err := strconv.Atoi(args[i])
+			if err != nil {
+				return result, fmt.Errorf("invalid COUNT value")
+			}
+			result.options.count = count
+		case "BLOCK":
+			i++
+			ms, err := strconv.Atoi(args[i])
+			if err != nil {
+				return result, fmt.Errorf("invalid BLOCK value")
+			}
+			result.options.block = true
+			result.options.timeout = time.Duration(ms) * time.Millisecond
+		case "STREAMS":
+			i++
+			remaining := args[i:]
+			if len(remaining)%2 != 0 {
+				return result, fmt.Errorf("unbalanced keys and ids")
+			}
+			mid := len(remaining) / 2
+			result.keys = remaining[:mid]
+			result.ids = remaining[mid:]
+			return result, nil
+		default:
+			return result, fmt.Errorf("unknown option: %s", args[i])
+		}
+		i++
+	}
+
+	return result, fmt.Errorf("missing STREAMS keyword")
+}
 
 func main() {
 	store := Store.NewStore(logger)
@@ -275,36 +328,34 @@ func HandleConnection(conn net.Conn, store *Store.Store) {
 
 		case "XREAD":
 			// The XREAD command is used to read data from one or more streams, blocking until data is available.
-			// XREAD COUNT count BLOCK timeout STREAMS key [key ...] id [id ...]
+			// XREAD BLOCK timeout STREAMS key [key ...] id [id ...]
 			if len(args) < 4 {
 				resp.WriteError(conn, "XREAD command requires at least 4 arguments")
 				continue
 			}
-			if strings.ToLower(args[1]) == "streams" {
-				args = args[2:]
-				if len(args)%2 != 0 {
-					resp.WriteError(conn, "XREAD STREAMS requires an even number of arguments after STREAMS")
-					continue
-				}
+			xreadArgs, err := parseXReadArgs(args[1:])
+			if err != nil {
+				resp.WriteError(conn, err.Error())
+			}
 
-				keys := []string{}
-				ids := []string{}
-				n := len(args) / 2
-
-				for i := 0; i < n; i += 1 {
-					keys = append(keys, strings.TrimSpace(args[i]))
-				}
-				for i := n; i < n*2; i += 1 {
-					ids = append(ids, strings.TrimSpace(args[i]))
-				}
-
-				entries, err := store.XRead(keys, ids)
-				logger.Printf("XREAD result for keys: %v, ids: %v is %v with error: %v", keys, ids, entries, err)
+			if !xreadArgs.options.block {
+				// if not blocking
+				entries, err := store.XRead(xreadArgs.keys, xreadArgs.ids)
+				logger.Printf("XREAD result for keys: %v, ids: %v is %v with error: %v", xreadArgs.keys, xreadArgs.ids, entries, err)
 				if err == nil {
-					resp.WriteStreamResults(conn, keys, entries)
-				} else {
 					logger.Printf("Error reading stream entries: %v", err)
+					resp.WriteStreamResults(conn, xreadArgs.keys, entries)
+				} else {
 					resp.WriteArray(conn, []string{})
+				}
+
+			} else {
+				entries, err := store.XReadBlocking(xreadArgs.options.timeout, xreadArgs.keys, xreadArgs.ids)
+				if err != nil {
+					resp.WriteArray(conn, []string{})
+					logger.Printf("Error reading stream entries: %v", err)
+				} else {
+					resp.WriteStreamResults(conn, xreadArgs.keys, entries)
 				}
 
 			}

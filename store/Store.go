@@ -30,18 +30,20 @@ type Store struct {
 	lists   map[string]*list.List
 	waiters map[string][]chan string // key -> waiting clients
 
-	streamsMu sync.RWMutex
-	streams   map[string]*Stream // key -> stream data
-	logger    *log.Logger
+	streamsMu     sync.RWMutex
+	streams       map[string]*Stream // key -> stream data
+	logger        *log.Logger
+	streamWaiters map[string][]chan string // key -> waiting clients
 }
 
 func NewStore(logger *log.Logger) *Store {
 	return &Store{
-		data:    make(map[string]Entry),
-		lists:   make(map[string]*list.List),
-		waiters: make(map[string][]chan string),
-		streams: make(map[string]*Stream),
-		logger:  logger,
+		data:          make(map[string]Entry),
+		lists:         make(map[string]*list.List),
+		waiters:       make(map[string][]chan string),
+		streams:       make(map[string]*Stream),
+		logger:        logger,
+		streamWaiters: make(map[string][]chan string),
 	}
 }
 

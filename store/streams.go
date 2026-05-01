@@ -1,11 +1,33 @@
 package store
 
 import (
+	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 )
+
+type StreamID struct {
+	Ms  int64 // milliseconds timestamp
+	Seq int64 // sequence number
+}
+
+func NewIDFromString(ID string) StreamID {
+	ms, seq, err := parseID(ID)
+	if err != nil {
+		return StreamID{Ms: 0, Seq: 0}
+	}
+	return StreamID{Ms: ms, Seq: seq}
+}
+
+func (a StreamID) Less(b StreamID) bool {
+	if a.Ms != b.Ms {
+		return a.Ms < b.Ms
+	}
+	return a.Seq < b.Seq
+}
 
 type StreamEntry struct {
 	id     string
@@ -122,6 +144,19 @@ func (s *Store) XAdd(key string, ID string, fields map[string]string) (string, e
 		fields: fields,
 	})
 
+	s.streamsMu.Lock()
+	// get the waiters on this key
+	waiters := s.streamWaiters[key]
+	s.streamWaiters[key] = nil // clear waiters
+	s.streamsMu.Unlock()
+
+	for _, waiter := range waiters {
+		select {
+		case waiter <- key:
+		default: // waiter already received from another stream
+		}
+	}
+
 	// Return the ID as a bulk string
 	return ID, nil
 }
@@ -237,9 +272,75 @@ func (s *Store) XReadHelper(key string, startID string) ([]StreamEntry, error) {
 	}
 
 	for i, entry := range stream.entries {
-		if entry.id > startID {
+		less, err := LessThan(startID, entry.id)
+		if err != nil {
+			return nil, err
+		}
+		if less { // if start id is less than the entry id then append it
 			result = append(result, stream.entries[i])
 		}
 	}
 	return result, nil
+}
+
+func (s *Store) XReadBlocking(timeout time.Duration, keys []string, ids []string) ([][]StreamEntry, error) {
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(timeout))
+	if timeout == 0 {
+		ctx = context.Background() // wait indefinitely
+	}
+	defer cancel()
+	results, err := s.XRead(keys, ids)
+	if err != nil {
+		return results, err
+	}
+	if hasEntries(results) {
+		return results, nil
+	}
+
+	// add an entry in the waiters to get results when it arrives
+	waiter := make(chan string, 1)
+
+	s.streamsMu.Lock()
+	for _, key := range keys {
+		s.streamWaiters[key] = append(s.streamWaiters[key], waiter)
+	}
+	s.streamsMu.Unlock()
+
+	select {
+	case key := <-waiter:
+		s.logger.Printf("key of the waiter: %s", key)
+		idx := slices.Index(keys, key)
+		return s.XRead(keys[idx:idx+1], ids[idx:idx+1])
+	case <-ctx.Done():
+		return nil, fmt.Errorf("timeout expired")
+	}
+
+}
+
+func LessThan(ID1, ID2 string) (bool, error) {
+	m1, s1, err1 := parseID(ID1)
+	if err1 != nil {
+		return false, err1
+	}
+	m2, s2, err2 := parseID(ID2)
+	if err2 != nil {
+		return false, err2
+	}
+
+	if m1 != m2 {
+		return m1 < m2, nil
+	}
+	return s1 < s2, nil
+
+}
+
+func hasEntries(results [][]StreamEntry) bool {
+	hasEntries := false
+	for _, r := range results {
+		if len(r) > 0 {
+			hasEntries = true
+			break
+		}
+	}
+	return hasEntries
 }
