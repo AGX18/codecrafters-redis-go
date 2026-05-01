@@ -93,7 +93,7 @@ func (s *Store) XAdd(key string, ID string, fields map[string]string) (string, e
 	} else {
 		// Auto-generate ID parts if *
 		if ID == "*" {
-			millis := time.Now().UnixMilli()
+			millis = time.Now().UnixMilli()
 			if LastID.Ms == millis {
 				seq = LastID.Seq + 1
 			} else {
