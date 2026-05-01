@@ -282,6 +282,22 @@ func (s *Store) XReadBlocking(timeout time.Duration, keys []string, ids []string
 		ctx = context.Background() // wait indefinitely
 	}
 	defer cancel()
+	s.streamsMu.RLock()
+	for i, id := range ids {
+		if id == "$" {
+			Laststream, exists := s.streams[keys[i]]
+			if exists && len(Laststream.entries) > 0 {
+				lastEntryID := Laststream.entries[len(Laststream.entries)-1].id
+				ids[i] = lastEntryID
+			} else {
+				// stream does not exist
+				return nil, fmt.Errorf("stream does not exist with the key: %s", keys[i])
+			}
+
+		}
+	}
+	s.streamsMu.RUnlock()
+
 	results, err := s.XRead(keys, ids)
 	if err != nil {
 		return results, err
