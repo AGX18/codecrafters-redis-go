@@ -19,9 +19,9 @@ func RPUSH(args []string, conn net.Conn, store *Store.Store) {
 }
 func LPUSH(args []string, conn net.Conn, store *Store.Store) {
 	if len(args) < 3 {
-		resp.WriteError(conn, "RPUSH command requires at least 2 arguments")
+		resp.WriteError(conn, "LPUSH command requires at least 2 arguments")
 	} else {
-		length := store.RPush(args[1], args[2:])
+		length := store.LPUSH(args[1], args[2:])
 		resp.WriteInteger(conn, length)
 	}
 }
