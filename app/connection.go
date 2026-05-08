@@ -11,6 +11,17 @@ import (
 	Store "github.com/codecrafters-io/redis-starter-go/store"
 )
 
+type Command struct {
+	Name string   // e.g. "SET"
+	Args []string // e.g. ["SET", "key1", "value1"]
+}
+
+type Client struct {
+	inTransaction bool
+	queue         []Command
+	conn          net.Conn
+}
+
 func Set(args []string, conn net.Conn, store *Store.Store) {
 	if len(args) < 3 {
 		resp.WriteError(conn, "SET command requires at least 2 arguments")
@@ -62,87 +73,109 @@ func Get(args []string, conn net.Conn, store *Store.Store) {
 	}
 }
 
-func HandleConnection(conn net.Conn, store *Store.Store) {
-	defer conn.Close()
-	reader := bufio.NewReader(conn)
+func HandleConnection(client *Client, store *Store.Store) {
+	defer client.conn.Close()
+	reader := bufio.NewReader(client.conn)
 	for {
 		args, err := resp.ParseRESP(reader)
 		logger.Printf("Parsed arguments: %v", args)
 		if err != nil {
-			resp.WriteError(conn, err.Error())
+			resp.WriteError(client.conn, err.Error())
 			return
 		}
 		if len(args) == 0 {
-			resp.WriteError(conn, "No Command Provided")
+			resp.WriteError(client.conn, "No Command Provided")
 			return
 		}
 
-		switch strings.ToUpper(args[0]) {
-		case "PING":
-			resp.WriteSimpleString(conn, "PONG")
-		case "ECHO":
-			if len(args) > 1 {
-				resp.WriteBulkString(conn, strings.TrimSpace(strings.Join(args[1:], " ")))
-			} else {
-				resp.WriteError(conn, "ECHO command requires an argument")
-			}
-		case "SET":
-			Set(args, conn, store)
-		case "GET":
-			Get(args, conn, store)
-		case "RPUSH":
-			// RPUSH mylist a b c
-			RPUSH(args, conn, store)
-		case "LPUSH":
-			// LPUSH mylist a b c
-			LPUSH(args, conn, store)
-		case "LRANGE":
-			// The LRANGE command is used to retrieve elements from a list using a start index and a stop index.
-			// LRANGE mylist start stop
-			LRANGE(args, conn, store)
-
-		case "LLEN":
-			// The LLEN command is used to get the length of a list.
-			// LLEN mylist
-			LLEN(args, conn, store)
-
-		case "LPOP":
-			// The LPOP command is used to remove and return the first element of a list.
-			// LPOP mylist [count]
-			LPOP(args, conn, store)
-
-		case "BLPOP":
-			// The BLPOP command is used to remove and return the first element of a list, or block until one is available.
-			// BLPOP mylist timeout
-			BLPOP(args, conn, store)
-
-		case "TYPE":
-			// The TYPE command is used to determine the type of the value stored at a key.
-			// TYPE mykey
-			TYPE(args, conn, store)
-
-		case "XADD":
-			// The XADD command is used to append a new entry to a stream.
-			// XADD mystream * field1 value1 field2 value2
-			XADD(args, conn, store)
-
-		case "XRANGE":
-			// The XRANGE command is used to retrieve a range of entries from a stream.
-			// XRANGE mystream start end
-			XRANGE(args, conn, store)
-
-		case "XREAD":
-			// The XREAD command is used to read data from one or more streams, blocking until data is available.
-			// XREAD BLOCK timeout STREAMS key [key ...] id [id ...]
-			XREAD(args, conn, store)
-
-		case "INCR":
-			INCR(args, conn, store)
-
-		default:
-			resp.WriteError(conn, "Unknown Command: "+args[0])
-		}
+		executeCommand(client, Command{Args: args[:], Name: args[0]}, store)
 
 	}
 
+}
+
+func executeCommand(client *Client, cmd Command, store *Store.Store) {
+	args := cmd.Args
+	if client.inTransaction && strings.ToLower(cmd.Name) != "exec" {
+		client.queue = append(client.queue, Command{Args: args[:], Name: args[0]})
+		logger.Printf("%v", client.queue) // print the queue of the client
+		resp.WriteSimpleString(client.conn, "QUEUED")
+		return
+	}
+	switch strings.ToUpper(cmd.Name) {
+	case "PING":
+		resp.WriteSimpleString(client.conn, "PONG")
+	case "ECHO":
+		if len(args) > 1 {
+			resp.WriteBulkString(client.conn, strings.TrimSpace(strings.Join(args[1:], " ")))
+		} else {
+			resp.WriteError(client.conn, "ECHO command requires an argument")
+		}
+	case "SET":
+		Set(args, client.conn, store)
+	case "GET":
+		Get(args, client.conn, store)
+	case "RPUSH":
+		// RPUSH mylist a b c
+		RPUSH(args, client.conn, store)
+	case "LPUSH":
+		// LPUSH mylist a b c
+		LPUSH(args, client.conn, store)
+	case "LRANGE":
+		// The LRANGE command is used to retrieve elements from a list using a start index and a stop index.
+		// LRANGE mylist start stop
+		LRANGE(args, client.conn, store)
+
+	case "LLEN":
+		// The LLEN command is used to get the length of a list.
+		// LLEN mylist
+		LLEN(args, client.conn, store)
+
+	case "LPOP":
+		// The LPOP command is used to remove and return the first element of a list.
+		// LPOP mylist [count]
+		LPOP(args, client.conn, store)
+
+	case "BLPOP":
+		// The BLPOP command is used to remove and return the first element of a list, or block until one is available.
+		// BLPOP mylist timeout
+		BLPOP(args, client.conn, store)
+
+	case "TYPE":
+		// The TYPE command is used to determine the type of the value stored at a key.
+		// TYPE mykey
+		TYPE(args, client.conn, store)
+
+	case "XADD":
+		// The XADD command is used to append a new entry to a stream.
+		// XADD mystream * field1 value1 field2 value2
+		XADD(args, client.conn, store)
+
+	case "XRANGE":
+		// The XRANGE command is used to retrieve a range of entries from a stream.
+		// XRANGE mystream start end
+		XRANGE(args, client.conn, store)
+
+	case "XREAD":
+		// The XREAD command is used to read data from one or more streams, blocking until data is available.
+		// XREAD BLOCK timeout STREAMS key [key ...] id [id ...]
+		XREAD(args, client.conn, store)
+
+	case "INCR":
+		INCR(args, client.conn, store)
+
+	case "MULTI":
+		client.inTransaction = true
+		resp.WriteSimpleString(client.conn, "OK")
+	case "EXEC":
+		client.inTransaction = false
+		logger.Println("executing all commands")
+		for _, cmd := range client.queue {
+			executeCommand(client, cmd, store)
+		}
+		client.queue = []Command{} // clear the queue
+
+	default:
+		resp.WriteError(client.conn, "Unknown Command: "+args[0])
+	}
 }

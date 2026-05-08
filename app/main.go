@@ -84,6 +84,7 @@ func main() {
 		}
 		logger.Println("Client connected:", conn.RemoteAddr())
 		// reading and parsing RESP commands from the client and responding with a simple PONG message
-		go HandleConnection(conn, store)
+		client := &Client{conn: conn, queue: make([]Command, 0)}
+		go HandleConnection(client, store)
 	}
 }
