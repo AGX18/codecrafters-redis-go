@@ -4,6 +4,7 @@ import (
 	"container/list"
 	"context"
 	"log"
+	"slices"
 	"sync"
 	"time"
 )
@@ -278,6 +279,7 @@ func (s *Store) BLPOP(key string, timeout float64) (string, bool) {
 	// we create a new channel for this waiting client and add it to the list of waiters for this key
 	waiter := make(chan string, 1) // buffered channel to avoid blocking the producer
 	s.waiters[key] = append(s.waiters[key], waiter)
+	index := len(s.waiters[key]) - 1
 
 	s.listsMu.Unlock()
 
@@ -296,6 +298,9 @@ func (s *Store) BLPOP(key string, timeout float64) (string, bool) {
 		return value, true
 	case <-ctx.Done():
 		// timeout expired, return null
+		s.listsMu.Lock()
+		s.waiters[key] = slices.Delete(s.waiters[key], index, index+1)
+		s.listsMu.Unlock()
 		s.logger.Printf("BLPOP timeout expired for key: %s", key)
 		return "", false
 	}
