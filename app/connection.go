@@ -172,6 +172,7 @@ func executeCommand(client *Client, conn net.Conn, cmd Command, store *Store.Sto
 		if !client.inTransaction {
 			// return an error
 			resp.WriteError(client.conn, "EXEC without MULTI")
+			return
 		}
 		client.inTransaction = false
 		logger.Println("executing all commands")
