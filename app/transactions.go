@@ -12,6 +12,7 @@ func INCR(args []string, conn net.Conn, store *Store.Store) {
 
 	if err != nil {
 		resp.WriteError(conn, err.Error())
+		return
 	}
 	resp.WriteInteger(conn, result)
 }
