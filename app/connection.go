@@ -169,6 +169,10 @@ func executeCommand(client *Client, conn net.Conn, cmd Command, store *Store.Sto
 		client.inTransaction = true
 		resp.WriteSimpleString(conn, "OK")
 	case "EXEC":
+		if !client.inTransaction {
+			// return an error
+			resp.WriteError(client.conn, "EXEC without MULTI")
+		}
 		client.inTransaction = false
 		logger.Println("executing all commands")
 		for _, cmd := range client.queue {
