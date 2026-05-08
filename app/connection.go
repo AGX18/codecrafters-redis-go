@@ -136,6 +136,9 @@ func HandleConnection(conn net.Conn, store *Store.Store) {
 			// XREAD BLOCK timeout STREAMS key [key ...] id [id ...]
 			XREAD(args, conn, store)
 
+		case "INCR":
+			INCR(args, conn, store)
+
 		default:
 			resp.WriteError(conn, "Unknown Command: "+args[0])
 		}
