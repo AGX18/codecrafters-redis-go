@@ -97,7 +97,7 @@ func HandleConnection(client *Client, store *Store.Store) {
 
 func executeCommand(client *Client, conn net.Conn, cmd Command, store *Store.Store) {
 	args := cmd.Args
-	if client.inTransaction && strings.ToLower(cmd.Name) != "exec" {
+	if client.inTransaction && strings.ToLower(cmd.Name) != "exec" && strings.ToLower(cmd.Name) != "discard" {
 		client.queue = append(client.queue, Command{Args: args[:], Name: args[0]})
 		logger.Printf("%v", client.queue) // print the queue of the client
 		resp.WriteSimpleString(conn, "QUEUED")
@@ -184,6 +184,16 @@ func executeCommand(client *Client, conn net.Conn, cmd Command, store *Store.Sto
 		}
 		client.queue = []Command{} // clear the queue
 		resp.WriteRawArray(client.conn, client.responses)
+
+	case "DISCARD":
+		if !client.inTransaction {
+			// return an error
+			resp.WriteError(client.conn, "DISCARD without MULTI")
+			return
+		}
+		client.inTransaction = false
+		client.queue = []Command{} // clear the queue
+		resp.WriteSimpleString(conn, "OK")
 
 	default:
 		resp.WriteError(client.conn, "Unknown Command: "+args[0])
