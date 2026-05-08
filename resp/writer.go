@@ -60,3 +60,10 @@ func WriteStreamResults(conn net.Conn, keys []string, results [][]store.StreamEn
 		WriteStreamEntries(conn, entries)
 	}
 }
+
+func WriteRawArray(conn net.Conn, responses [][]byte) {
+	conn.Write([]byte(fmt.Sprintf("*%d\r\n", len(responses))))
+	for _, res := range responses {
+		conn.Write(res)
+	}
+}
